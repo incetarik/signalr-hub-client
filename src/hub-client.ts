@@ -204,7 +204,7 @@ export class HubClient {
       connection.withAutomaticReconnect(autoConnectRetries as number[])
     }
 
-    const c = (this._connection = connection.withAutomaticReconnect().build());
+    const c = this._connection = connection.build();
     c.serverTimeoutInMilliseconds = serverTimeoutInMilliseconds;
 
     c.onclose((error) => this.onClose(error));
