@@ -78,7 +78,7 @@ export async function getHubClient(
 
   if (instance) {
     if (instance.isConnecting) {
-      await instance.untilConnected$()
+      await instance.untilConnected()
       return instance
     }
 
