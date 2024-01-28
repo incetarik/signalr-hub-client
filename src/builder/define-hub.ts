@@ -149,12 +149,13 @@ export function defineHubObject<
 
   const actions = prepareActions<N, Events, Actions>(options)
 
-  return {
+  const result = {
     name: options.name,
     get hookListenerCount() { return registeredHookListenerCount },
     get permanentListenerCount() { return registeredPermanentListenerCount },
 
     actions,
+
     addListener<const K extends keyof Events>(
       event: K,
       handler: (...args: ToFunctionParameters<Events[K]>) => void,
@@ -255,6 +256,19 @@ export function defineHubObject<
       }, [ event, handler, ...deps ])
     },
   } as HubObjectDefinition<N, Events, Actions>
+
+  result.events = Object
+    .keys(options.events)
+    .reduce((prev, eventName) => {
+      prev[ eventName ] = {
+        addListener(handler) { return result.addListener(eventName, handler) },
+        useListener(handler, dependencyList) { return result.useListener(eventName, handler, dependencyList) },
+      } as typeof result.events[string]
+
+      return prev
+    }, {} as Record<string, unknown>) as typeof result.events
+
+  return result
 }
 
 function installTypeCheckingForHandler<F extends (...args: any[]) => unknown>(
