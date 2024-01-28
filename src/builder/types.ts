@@ -95,6 +95,30 @@ export type HubObjectFunction<
   K extends keyof Events
 > = (this: ConstrainedHubClient, ...args: ToFunctionParameters<Events[K]>) => void
 
+/**
+ * The event definition types.
+ */
+export type IEventDefinitions<Events extends FunctionDefinitions>
+  = {
+     readonly [ K in keyof Events ]: {
+      /**
+       * Adds a permanent listener for the event.
+       *
+       * @param {HubObjectFunction<Events, K>} handler The event handler.
+       * @return {Unsubscriber} The unsubscriber object.
+       */
+      addListener(handler: HubObjectFunction<Events, K>): Unsubscriber
+
+      /**
+       * Adds a hook-like listener for the event.
+       *
+       * @param {HubObjectFunction<Events, K>} handler The event handler.
+       * @param {unknown[]} dependencyList The dependency list.
+       */
+      useListener(handler: HubObjectFunction<Events, K>, dependencyList: readonly unknown[]): void
+    }
+  }
+
 type IActionDefinitions<Actions extends ActionDefinitions> = {
   readonly [ K in keyof Actions ]: {
     /**
@@ -174,11 +198,16 @@ export type HubObjectDefinition<
   useListener<const K extends keyof Events>(
     event: K,
     handler: (...args: ToFunctionParameters<Events[ K ]>) => void,
-    deps?: unknown[]
+    deps?: readonly unknown[]
   ): void
 
   /**
    * The actions of the hub.
    */
   actions: IActionDefinitions<Actions>
+
+  /**
+   * The events of the hub.
+   */
+  events: IEventDefinitions<Events>
 }
