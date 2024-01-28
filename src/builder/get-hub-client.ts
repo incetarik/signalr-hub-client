@@ -4,7 +4,13 @@ import { HubClient, IHubStartParameters } from '../hub-client'
 
 const instances: Map<string, HubClient> = new Map()
 
-interface GetHubClientParams {
+/**
+ * Parameters for getting hub client.
+ *
+ * @export
+ * @interface GetHubClientParams
+ */
+export interface GetHubClientParams {
   /**
    * Indicates whether the {@link HubClient} should be started or not.
    *
