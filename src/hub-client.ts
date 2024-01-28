@@ -16,9 +16,10 @@ import {
 /**
  * Represents the start parameters for a {@link HubClient}.
  *
+ * @exports
  * @interface IHubStartParameters
  */
-interface IHubStartParameters {
+export interface IHubStartParameters {
   /**
    * The logging level.
    *
@@ -249,7 +250,7 @@ export class HubClient {
    * Returns a {@link Promise} that will resolve when the connection is made.
    * @return {Promise<string>} A {@link Promise} of connection ID.
    */
-  untilConnected$(): Promise<string> {
+  untilConnected(): Promise<string> {
     if (this.isConnected) return Promise.resolve<string>(this.connectionId!);
 
     return new Promise((res) => {
@@ -279,6 +280,24 @@ export class HubClient {
   }
 
   /**
+   * Removes an error listener.
+   *
+   * @param {(error?: Error) => void} listener The listener to remove.
+   * @return {boolean} A boolean indicating the success state.
+   * @memberof HubClient
+   */
+  removeErrorListener(listener: (error: Error) => void): boolean {
+    const { _errorListeners } = this
+    if (!_errorListeners) return false
+
+    const index = _errorListeners.indexOf(listener)
+    if (index < 0) return false
+
+    _errorListeners.splice(index, 1)
+    return true
+  }
+
+  /**
    * Adds a close listener to be executed when the connection is closed.
    * @param {(error?: Error) => void} listener The listener to add.
    */
@@ -289,6 +308,24 @@ export class HubClient {
     }
 
     el.push(listener);
+  }
+
+  /**
+   * Removes a close listener.
+   *
+   * @param {(error?: Error) => void} listener The listener to remove.
+   * @return {boolean} A boolean indicating the success state.
+   * @memberof HubClient
+   */
+  removeCloseListener(listener: (error?: Error) => void): boolean {
+    const { _closeListeners } = this
+    if (!_closeListeners) return false
+
+    const index = _closeListeners.indexOf(listener)
+    if (index < 0) return false
+
+    _closeListeners.splice(index, 1)
+    return true
   }
 
   /**
@@ -305,6 +342,24 @@ export class HubClient {
   }
 
   /**
+   * Removes a reconnect listener.
+   *
+   * @param {(error?: Error) => void} listener The listener to remove.
+   * @return {boolean} A boolean indicating the success state.
+   * @memberof HubClient
+   */
+  removeReconnectListener(listener: (error?: Error) => void): boolean {
+    const { _reconnectListeners } = this
+    if (!_reconnectListeners) return false
+
+    const index = _reconnectListeners.indexOf(listener)
+    if (index < 0) return false
+
+    _reconnectListeners.splice(index, 1)
+    return true
+  }
+
+  /**
    * Adds a listener to be executed when the client is connected.
    * @param {(connectionId: string, isReconnect: boolean) => void} listener The listener to add.
    */
@@ -318,6 +373,24 @@ export class HubClient {
   }
 
   /**
+   * Removes a connect listener.
+   *
+   * @param {(connectId: string, isReconnect: boolean) => void} listener The listener to remove.
+   * @return {boolean} A boolean indicating the success state.
+   * @memberof HubClient
+   */
+  removeConnectListener(listener: (connectId: string, isReconnect: boolean) => void): boolean {
+    const { _connectListeners } = this
+    if (!_connectListeners) return false
+
+    const index = _connectListeners.indexOf(listener)
+    if (index < 0) return false
+
+    _connectListeners.splice(index, 1)
+    return true
+  }
+
+  /**
    * Adds a listener to be executed when the connection state is changed.
    * @param {(prev: HubConnectionState, curr: HubConnectionState) => void} listener The listener to add.
    */
@@ -328,6 +401,23 @@ export class HubClient {
     }
 
     el.push(listener);
+  }
+
+  /**
+   * Removes a connection listener.
+   *
+   * @param {(prev: HubConnectionState, curr: HubConnectionState) => void} listener The listener to remove.
+   * @return {boolean} A boolean indicating the success state.
+   * @memberof HubClient
+   */
+  removeConnectionListener(listener: (prev: HubConnectionState, curr: HubConnectionState) => void): boolean {
+    const { _connectionListeners } = this
+    if (!_connectionListeners) return false
+
+    const index = _connectionListeners.indexOf(listener)
+    if (index < 0) return false
+    _connectionListeners.splice(index, 1)
+    return true
   }
 
   /**
