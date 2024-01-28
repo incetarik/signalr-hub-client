@@ -11,6 +11,8 @@ import type {
   Unsubscriber,
 } from './types'
 
+import type { IHubStartParameters } from '../hub-client'
+
 import { HubConnectionState } from '@microsoft/signalr'
 
 import { getHubClient } from './get-hub-client'
@@ -82,6 +84,14 @@ interface IDefineHubObjectParams<
    * of the error message or `undefined` for assuming the type is valid.
    */
   typeCheckCustomType?(methodName: keyof Events, parameterIndex: number, value: unknown): boolean | string | undefined
+
+  /**
+   * The start parameters for the hub, if needed.
+   *
+   * @type {IHubStartParameters}
+   * @memberof IDefineHubObjectParams
+   */
+  hubStartParameters?: IHubStartParameters
 }
 
 /**
@@ -171,7 +181,12 @@ export function defineHubObject<
 
       let unsubscriber = () => false
 
-      getHubClient(url!, true, true)
+      getHubClient({
+        start: true,
+        address: url!,
+        resetIfNotConnected: true,
+        startParameters: options.hubStartParameters
+      })
         .then(client => {
           client.on(event as string, function _proxyHandlerFunction(...args: unknown[]) {
             return handler.apply(client, args as ToFunctionParameters<Events[K]>)
@@ -217,7 +232,12 @@ export function defineHubObject<
         let isUnmounted = false
         let unsubscriber: (() => void) | undefined
 
-        getHubClient(url!, true, true)
+        getHubClient({
+          start: true,
+          address: url!,
+          resetIfNotConnected: true,
+          startParameters: options.hubStartParameters
+        })
           .then(client => {
             if (isUnmounted) return
 
@@ -413,7 +433,12 @@ function prepareActions<
           doParameterValidation(action, parameters, args, options)
         }
 
-        const client = await getHubClient(url!, true, true)
+        const client = await getHubClient({
+          start: true,
+          address: url!,
+          resetIfNotConnected: true,
+          startParameters: options.hubStartParameters
+        })
         return await client.send(action, ...args)
       },
       async invoke(...args: unknown[]): Promise<any> {
@@ -421,7 +446,12 @@ function prepareActions<
           doParameterValidation(action, parameters, args, options)
         }
 
-        const client = await getHubClient(url!, true, true)
+        const client = await getHubClient({
+          start: true,
+          address: url!,
+          resetIfNotConnected: true,
+          startParameters: options.hubStartParameters
+        })
         return await client.invoke(action, ...args)
       },
     }
