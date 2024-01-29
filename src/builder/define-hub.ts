@@ -188,6 +188,7 @@ export function defineHubObject<
         startParameters: options.hubStartParameters
       })
         .then(client => {
+          event = (event as string).toLowerCase() as typeof event
           client.on(event as string, function _proxyHandlerFunction(...args: unknown[]) {
             return handler.apply(client, args as ToFunctionParameters<Events[K]>)
           })
@@ -239,6 +240,7 @@ export function defineHubObject<
           startParameters: options.hubStartParameters
         })
           .then(client => {
+            event = (event as string).toLowerCase() as typeof event
             if (isUnmounted) return
 
             client.on(event as string, function _proxyHandlerFunction(...args: unknown[]) {
@@ -281,8 +283,8 @@ export function defineHubObject<
     .keys(options.events)
     .reduce((prev, eventName) => {
       prev[ eventName ] = {
-        addListener(handler) { return result.addListener(eventName, handler) },
-        useListener(handler, dependencyList) { return result.useListener(eventName, handler, dependencyList) },
+        addListener(handler) { return result.addListener(eventName.toLowerCase(), handler) },
+        useListener(handler, dependencyList = []) { return result.useListener(eventName.toLowerCase(), handler, dependencyList) },
       } as typeof result.events[string]
 
       return prev

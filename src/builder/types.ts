@@ -113,9 +113,9 @@ export type IEventDefinitions<Events extends FunctionDefinitions>
        * Adds a hook-like listener for the event.
        *
        * @param {HubObjectFunction<Events, K>} handler The event handler.
-       * @param {unknown[]} dependencyList The dependency list.
+       * @param {unknown[]} [dependencyList=[]] The dependency list.
        */
-      useListener(handler: HubObjectFunction<Events, K>, dependencyList: readonly unknown[]): void
+      useListener(handler: HubObjectFunction<Events, K>, dependencyList?: readonly unknown[]): void
     }
   }
 
