@@ -36,6 +36,16 @@ export interface GetHubClientParams {
    * The URL address for the {@link HubClient}.
    */
   address: string;
+
+  /**
+   * Indicates if the resulting instance should be cached.
+   *
+   * @type {boolean}
+   * @memberof GetHubClientParams
+   * @default
+   * true
+   */
+  cache?: boolean
 }
 
 /**
@@ -63,6 +73,7 @@ export async function getHubClient(
 ) {
 
   let startParameters: IHubStartParameters | undefined
+  let cache = true
 
   // Parameter normalization
   let address: string
@@ -75,6 +86,9 @@ export async function getHubClient(
 
     resetIfNotConnected = !!addressOrObject.resetIfNotConnected
     address = addressOrObject.address
+    if ('cache' in addressOrObject) {
+      cache = !!addressOrObject.cache
+    }
   }
   else {
     throw new Error(`[getHubClient] - No address is given for`)
@@ -100,12 +114,12 @@ export async function getHubClient(
       }
     }
 
-    instances.set(address, instance)
+    if (cache) { instances.set(address, instance) }
     return instance
   }
 
   instance = new HubClient(address)
-  instances.set(address, instance)
+  if (cache) { instances.set(address, instance) }
 
   if (!start) {
     return instance
