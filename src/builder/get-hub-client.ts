@@ -138,3 +138,16 @@ export async function getHubClient(
   await instance.start(startParameters)
   return instance
 }
+
+/**
+ * Deletes a {@link HubClient} cache by given address.
+ *
+ * @export
+ * @param {string} address The address of the client.
+ * @return {boolean} `true` if the deletion was successful, `false` otherwise.
+ */
+export function deleteHubClientCache(address: string): boolean {
+  if (!instances.has(address)) { return false }
+  instances.delete(address)
+  return true
+}
