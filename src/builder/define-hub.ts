@@ -23,6 +23,35 @@ type DependencyList = readonly unknown[]
 type EffectCallback = () => void | (() => void)
 type EffectModifierFunction = (fn: EffectCallback, dependencies: DependencyList) => void
 type CallbackModifierFunction = <F extends Function>(fn: F, dependencyList: DependencyList) => F
+const EffectHandlers = new WeakMap<HubClient, Map<string, (...args: unknown[]) => void>>()
+
+/**
+ * Gets the cached handler for the given hub client and the event.
+ *
+ * @param {HubClient} client The hub client.
+ * @param {string} eventName The event name.
+ * @param {Function} handler The handler function.
+ * @return A new cached handler function that can be used for `useListener` handlers.
+ */
+function getCachedHandler(client: HubClient, eventName: string, handler: Function) {
+  let cachedHandlers = EffectHandlers.get(client)
+  if (!cachedHandlers) {
+    cachedHandlers = new Map()
+    EffectHandlers.set(client, cachedHandlers)
+  }
+
+  let cachedHandler = cachedHandlers.get(eventName)
+  if (!cachedHandler) {
+    cachedHandler = function _proxyHandlerFunction(...args: unknown[]) {
+      return handler.apply(client, args)
+    }
+
+    cachedHandlers.set(eventName, cachedHandler)
+  }
+
+  return cachedHandler
+}
+
 
 interface IDefineHubObjectParams<
   Name extends string,
@@ -212,28 +241,41 @@ export function defineHubObject<
         )
       }
 
-      let unsubscriber = () => false
+      let unsubscribe = () => false
 
-      getHubClient({
+      getClient({
         start: true,
-        address: url!,
+        cache: true,
+
         resetIfNotConnected: true,
-        startParameters: options.hubStartParameters
-      })
-        .then(client => {
-          event = (event as string).toLowerCase() as typeof event
-          client.on(event as string, function _proxyHandlerFunction(...args: unknown[]) {
-            return handler.apply(client, args as ToFunctionParameters<Events[K]>)
-          })
+        startParameters: options.hubStartParameters,
 
-          ++registeredPermanentListenerCount
+        logger: options.logger,
+      }).then(client => {
+        const eventName = (event as string).toLowerCase() as string
 
-          unsubscriber = () => {
-            client.off(event as string)
-            --registeredPermanentListenerCount
-            return true
+        if (isDebug()) {
+          options.logger?.(`Added permanent handler for '${eventName}' for '${options.name}'`)
+        }
+
+        function _proxyHandlerFunction(...args: unknown[]) {
+          return handler.apply(client, args as ToFunctionParameters<Events[K]>)
+        }
+
+        client.on(eventName, _proxyHandlerFunction)
+
+        ++registeredPermanentListenerCount
+
+        unsubscribe = () => {
+          client.off(eventName, _proxyHandlerFunction)
+          --registeredPermanentListenerCount
+
+          if (isDebug()) {
+            options?.logger?.(`Unsubscribed '${eventName}', remaining permanent listeners: ${registeredPermanentListenerCount}`)
           }
-        })
+          return true
+        }
+      })
 
       return { unsubscribe }
     },
@@ -260,47 +302,62 @@ export function defineHubObject<
       } = options
 
       handler = callbackModifier(handler, deps)
+      const pin = isDebug() ? new Error() : undefined
+
       effectModifier(function _subscribe() {
         let isUnmounted = false
         let unsubscriber: (() => void) | undefined
 
-        getHubClient({
+        getClient({
           start: true,
-          address: url!,
+          cache: true,
+
           resetIfNotConnected: true,
-          startParameters: options.hubStartParameters
-        })
-          .then(client => {
-            event = (event as string).toLowerCase() as typeof event
-            if (isUnmounted) return
+          startParameters: options.hubStartParameters,
 
-            client.on(event as string, function _proxyHandlerFunction(...args: unknown[]) {
-              return handler.apply(client, args as ToFunctionParameters<Events[K]>)
+          logger: options.logger
+        }).then(client => {
+          if (isUnmounted) return
+
+          const eventName = (event as string).toLowerCase() as string
+          const cachedHandler = getCachedHandler(client, eventName, handler)
+          client.on(eventName, cachedHandler)
+
+          if (isDebug()) {
+            options.logger?.(`Added effect handler for '${eventName}' for '${options.name}'`)
+          }
+
+          ++registeredHookListenerCount
+
+          unsubscriber = () => {
+            client.off(eventName, cachedHandler)
+            --registeredHookListenerCount
+
+            if (isDebug()) {
+              options.logger?.(
+                `Unsubscribed '${eventName}', remaining hook listeners: ${registeredHookListenerCount}`,
+                getErrorLocation(pin)
+              )
+            }
+          }
+
+          if (effectModifier === __defaultEffectModifier) {
+            client.addConnectionChangeListener(function _connectionChangeListener(_prev, curr) {
+              client.removeConnectionListener(_connectionChangeListener)
+
+              if (curr === HubConnectionState.Disconnected) {
+                unsubscriber!()
+              }
+              else if (curr === HubConnectionState.Connected) {
+                _subscribe()
+              }
             })
-
-            ++registeredHookListenerCount
-
-            unsubscriber = () => {
-              client.off(event as string)
-              --registeredHookListenerCount
-            }
-
-            if (effectModifier === __defaultEffectModifier) {
-              client.addConnectionChangeListener(function _connectionChangeListener(_prev, curr) {
-                if (curr === HubConnectionState.Disconnected) {
-                  unsubscriber!()
-                }
-                else if (curr === HubConnectionState.Connected) {
-                  client.removeConnectionListener(_connectionChangeListener)
-                  _subscribe()
-                }
-              })
-            }
-          })
-          .catch(error => {
-            if (isUnmounted) return
-            throw error
-          })
+          }
+        })
+        .catch(error => {
+          if (isUnmounted) return
+          throw error
+        })
 
         return () => {
           isUnmounted = true
