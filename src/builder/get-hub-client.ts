@@ -46,6 +46,14 @@ export interface GetHubClientParams {
    * true
    */
   cache?: boolean
+
+  /**
+   * The logger function for hub client.
+   *
+   * @param {...unknown[]} args The arguments passed to the logger.
+   * @memberof GetHubClientParams
+   */
+  logger?(...args: unknown[]): void
 }
 
 /**
