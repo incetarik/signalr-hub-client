@@ -151,3 +151,17 @@ export function deleteHubClientCache(address: string): boolean {
   instances.delete(address)
   return true
 }
+
+
+/**
+ * Gets a cached instance of a {@link HubClient} by given address.
+ *
+ * @export
+ * @param {string} address The address of the client.
+ * @return {(HubClient | undefined)} The client instance or `undefined.`
+ *
+ * @__PURE__
+ */
+export function getCachedHubClientByAddress(address: string): HubClient | undefined {
+  return instances.get(address)
+}
