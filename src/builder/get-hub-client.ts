@@ -1,8 +1,11 @@
 import { HttpTransportType, LogLevel } from '@microsoft/signalr'
 
 import { HubClient, IHubStartParameters } from '../hub-client'
+import { isDebug } from '../utils/is-debug'
+import { ILock, makeLock } from '../utils/lock'
 
 const instances: Map<string, HubClient> = new Map()
+const pendingInstances: Map<string, ILock<HubClient>> = new Map()
 
 /**
  * Parameters for getting hub client.
@@ -80,8 +83,9 @@ export async function getHubClient(
   resetIfNotConnected = true,
 ) {
 
-  let startParameters: IHubStartParameters | undefined
+  let logger: GetHubClientParams['logger']
   let cache = true
+  let startParameters: IHubStartParameters | undefined
 
   // Parameter normalization
   let address: string
@@ -91,29 +95,78 @@ export async function getHubClient(
   else if (typeof addressOrObject === 'object') {
     startParameters = addressOrObject.startParameters
     start = typeof addressOrObject.start === 'boolean' ? addressOrObject.start : true
+    cache = typeof addressOrObject.cache === 'boolean' ? addressOrObject.cache : true
 
-    resetIfNotConnected = !!addressOrObject.resetIfNotConnected
+    resetIfNotConnected = typeof addressOrObject.resetIfNotConnected === 'boolean'
+      ? addressOrObject.resetIfNotConnected
+      : true
+
     address = addressOrObject.address
-    if ('cache' in addressOrObject) {
-      cache = !!addressOrObject.cache
+    logger = addressOrObject.logger
+  }
+  else {
+    throw new Error(`[getHubClient] - No address is given`)
+  }
+
+  let lockInstance = pendingInstances.get(address)
+
+  if (cache) {
+    if (lockInstance) {
+      if (isDebug()) {
+        logger?.(`The HubClient(${address}) is cached and waiting for the lock`)
+      }
+
+      return await lockInstance.lock
+    }
+    else {
+      lockInstance = makeLock()
+      pendingInstances.set(address, lockInstance)
+
+      if (isDebug()) {
+        logger?.(`A new lock is created for HubClient(${address})`)
+      }
     }
   }
   else {
-    throw new Error(`[getHubClient] - No address is given for`)
+    if (isDebug()) {
+      logger?.(`Getting HubClient(${address}) with no cache`)
+    }
   }
 
   let instance = instances.get(address)
 
   if (instance) {
+    if (isDebug()) {
+      logger?.(`Existing instance is found for HubClient(${address})`)
+    }
+
     if (instance.isConnecting) {
+      if (isDebug()) {
+        logger?.(`HubClient(${address}) is connecting, waiting it to be connected`)
+      }
+
       await instance.untilConnected()
+
+      if (isDebug()) {
+        logger?.(`HubClient(${address}) is connected, unlocking the pending locks`)
+      }
+
+      lockInstance?.unlock(instance)
       return instance
     }
 
     if (resetIfNotConnected) {
       if (!instance.isConnected) {
         try {
+          if (isDebug()) {
+            logger?.(`HubClient(${address}) was not connected, starting it again`)
+          }
+
           await instance.start()
+
+          if (isDebug()) {
+            logger?.(`HubClient(${address}) is started`)
+          }
         }
         catch (error) {
           instances.delete(address)
@@ -122,14 +175,40 @@ export async function getHubClient(
       }
     }
 
-    if (cache) { instances.set(address, instance) }
+    if (cache) {
+      if (isDebug()) {
+        logger?.(`Caching HubClient(${address}) instance and unlocking the lock`)
+      }
+
+      instances.set(address, instance)
+      lockInstance?.unlock(instance)
+      pendingInstances.delete(address)
+    }
+
     return instance
   }
 
+  if (isDebug()) {
+    logger?.(`Creating a new instance of HubClient(${address})`)
+  }
+
   instance = new HubClient(address)
-  if (cache) { instances.set(address, instance) }
+
+  if (cache) {
+    if (isDebug()) {
+      logger?.(`Caching the new HubClient(${address}) instance`)
+    }
+
+    instances.set(address, instance)
+  }
 
   if (!start) {
+    if (isDebug()) {
+      logger?.(`Unlocking the pending locks of HubClient(${address}) without starting it`)
+    }
+
+    lockInstance?.unlock(instance)
+    pendingInstances.delete(address)
     return instance
   }
 
@@ -143,7 +222,18 @@ export async function getHubClient(
     }
   }
 
+  if (isDebug()) {
+    logger?.(`Starting the instance of HubClient(${address})`)
+  }
+
   await instance.start(startParameters)
+
+  if (isDebug()) {
+    logger?.(`Unlocking the pending locks of HubClient(${address})`)
+  }
+
+  lockInstance?.unlock(instance)
+  pendingInstances.delete(address)
   return instance
 }
 
