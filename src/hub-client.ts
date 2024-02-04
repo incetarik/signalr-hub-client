@@ -100,8 +100,8 @@ export class HubClient {
   private _reconnectListeners!: ((error?: Error) => void)[];
   private _connectListeners!: ((connectionId: string, isReconnect: boolean) => void)[];
   private _connectionListeners!: ((prev: HubConnectionState, curr: HubConnectionState) => void)[];
-  private _methods!: Map<string, (...args: unknown[]) => void>
-  private _pendingMethods: Map<string, (...args: unknown[]) => void> | undefined
+  private _methods!: Map<string, ((...args: unknown[]) => void)[]>
+  private _pendingMethods: Map<string, ((...args: unknown[]) => void)[]> | undefined
 
   constructor(public readonly url: string) {}
 
@@ -218,8 +218,10 @@ export class HubClient {
     });
 
     if (this._pendingMethods) {
-      this._pendingMethods.forEach((value, key) => {
-        this.on(key, value)
+      this._pendingMethods.forEach((handlers, key) => {
+        handlers.forEach(handler => {
+          this.on(key, handler)
+        })
       })
 
       this._pendingMethods = undefined;
@@ -682,7 +684,13 @@ export class HubClient {
         this._pendingMethods = new Map()
       }
 
-      this._pendingMethods.set(methodName, newMethod)
+      if (this._pendingMethods.has(methodName)) {
+        this._pendingMethods.get(methodName)!.push(newMethod)
+      }
+      else {
+        this._pendingMethods.set(methodName, [ newMethod ])
+      }
+
       return this;
     }
 
@@ -690,7 +698,13 @@ export class HubClient {
       this._methods = new Map();
     }
 
-    this._methods.set(methodName, newMethod)
+    if (this._methods.has(methodName)) {
+      this._methods.get(methodName)!.push(newMethod)
+    }
+    else {
+      this._methods.set(methodName, [ newMethod ])
+    }
+
     this._connection.on(methodName, newMethod);
     return this;
   }
@@ -701,12 +715,25 @@ export class HubClient {
    * different instance (even if the function body is the same) will not remove the handler.
    *
    * @param {string} methodName  The name of the hub method to define.
+   * @param {(...args: unknown[]) => void} [method] The method to remove.
    * @returns {this} The instance itself to allow chaining.
    */
-  off(methodName: string): HubClient {
-    this._connection.off(methodName);
+  off(methodName: string, method?: (...args: unknown[]) => void): HubClient {
+    if (this._connection) {
+      this._connection.off(methodName, method!);
+    }
+
     if (this._methods) {
-      this._methods.delete(methodName)
+      if (method) {
+        const methods = this._methods.get(methodName)
+        if (Array.isArray(methods)) {
+          const index = methods.indexOf(method)
+          methods.splice(index, 1)
+        }
+      }
+      else {
+        this._methods.delete(methodName)
+      }
     }
 
     return this;
@@ -810,7 +837,12 @@ export class HubClient {
     this._initialized = true;
 
     if (!this._pendingMethods) return;
-    this._pendingMethods.forEach((value, key) => this._connection.on(key, value))
+    this._pendingMethods.forEach((handlers, key) => {
+      handlers.forEach(handler => {
+        this._connection.on(key, handler)
+      })
+    })
+
     this._pendingMethods = undefined;
   }
 
