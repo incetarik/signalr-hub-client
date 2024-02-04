@@ -1,4 +1,5 @@
 import type { HubClient } from '../hub-client'
+import type { GetHubClientParams } from './get-hub-client'
 import type { ParameterToType, ParameterType, ToFunctionParameters } from "./parameter-types"
 
 /**
@@ -200,6 +201,11 @@ export type HubObjectDefinition<
     handler: (...args: ToFunctionParameters<Events[ K ]>) => void,
     deps?: readonly unknown[]
   ): void
+
+  /**
+   *  Gets the client of the hub without starting it (if it is not started).
+   */
+  getClient(parameters?: Omit<GetHubClientParams, 'address'>): Promise<HubClient>
 
   /**
    * The actions of the hub.

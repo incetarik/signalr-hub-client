@@ -11,11 +11,13 @@ import type {
   Unsubscriber,
 } from './types'
 
-import type { IHubStartParameters } from '../hub-client'
+import type { HubClient, IHubStartParameters } from '../hub-client'
 
 import { HubConnectionState } from '@microsoft/signalr'
 
-import { getHubClient } from './get-hub-client'
+import { getErrorLocation } from '../utils/get-error-location'
+import { isDebug } from '../utils/is-debug'
+import { getHubClient, GetHubClientParams } from './get-hub-client'
 
 type DependencyList = readonly unknown[]
 type EffectCallback = () => void | (() => void)
@@ -167,13 +169,36 @@ export function defineHubObject<
 
   const actions = prepareActions<N, Events, Actions>(options)
 
+  function getClient(parameters: Omit<GetHubClientParams, 'address'>): Promise<HubClient> {
+    const {
+      cache = true,
+      start = false,
+      resetIfNotConnected = true,
+      startParameters = options.hubStartParameters,
+
+      logger,
+    } = (parameters || {})
+
+    return getHubClient({
+      address: url!,
+
+      cache,
+      start,
+      startParameters,
+      resetIfNotConnected,
+
+      logger,
+    })
+  }
+
   const result = {
     name: options.name,
+    actions,
+
     get hookListenerCount() { return registeredHookListenerCount },
     get permanentListenerCount() { return registeredPermanentListenerCount },
 
-    actions,
-
+    getClient,
     addListener<const K extends keyof Events>(
       event: K,
       handler: (...args: ToFunctionParameters<Events[K]>) => void,
