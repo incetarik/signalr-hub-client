@@ -92,6 +92,14 @@ interface IDefineHubObjectParams<
    * @memberof IDefineHubObjectParams
    */
   hubStartParameters?: IHubStartParameters
+
+  /**
+   * The logger function for hub client.
+   *
+   * @param {...unknown[]} args The arguments passed to the logger.
+   * @memberof IDefineHubObjectParams
+   */
+  logger?(...args: unknown[]): void
 }
 
 /**
