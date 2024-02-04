@@ -210,9 +210,7 @@ export function defineHubObject<
           }
         })
 
-      return {
-        unsubscribe(): boolean { return unsubscriber() },
-      }
+      return { unsubscribe }
     },
 
     useListener<K extends keyof Events>(
@@ -292,7 +290,9 @@ export function defineHubObject<
     .reduce((prev, eventName) => {
       prev[ eventName ] = {
         addListener(handler) { return result.addListener(eventName.toLowerCase(), handler) },
-        useListener(handler, dependencyList = []) { return result.useListener(eventName.toLowerCase(), handler, dependencyList) },
+        useListener(handler, dependencyList = []) {
+          return result.useListener(eventName.toLowerCase(), handler, dependencyList)
+        },
       } as typeof result.events[string]
 
       return prev
@@ -315,7 +315,12 @@ function installTypeCheckingForHandler<F extends (...args: any[]) => unknown>(
   return typeCheckedHandler as F
 }
 
-function doParameterValidation(fnName: string, parametersShape: readonly unknown[], parametersReceived: unknown[], options: IDefineHubObjectParams<string, {}>) {
+function doParameterValidation(
+  fnName: string,
+  parametersShape: readonly unknown[],
+  parametersReceived: unknown[],
+  options: IDefineHubObjectParams<string, {}>
+) {
   for (let i = 0, limit = parametersShape.length; i < limit; ++i) {
     const shape = parametersShape[ i ]
     const parameter = parametersReceived[ i ]
@@ -325,7 +330,13 @@ function doParameterValidation(fnName: string, parametersShape: readonly unknown
   }
 }
 
-function doValidation(shape: unknown, value: unknown, methodName: string, parameterIndex: number, options: IDefineHubObjectParams<string, {}>): boolean {
+function doValidation(
+  shape: unknown,
+  value: unknown,
+  methodName: string,
+  parameterIndex: number,
+  options: IDefineHubObjectParams<string, {}>
+): boolean {
   if (doCustomTypeValidation(shape, value, options, methodName, parameterIndex)) return true
   if (doOptionalValidation(shape, value, methodName, parameterIndex, options)) return true
   if (doConstructorValidation(shape, value)) return true
@@ -347,7 +358,13 @@ function doConstructorValidation(shape: unknown, value: unknown): boolean {
   }
 }
 
-function doObjectValidation(shape: unknown, value: unknown, methodName: string, parameterIndex: number, options: IDefineHubObjectParams<string, {}>): boolean {
+function doObjectValidation(
+  shape: unknown,
+  value: unknown,
+  methodName: string,
+  parameterIndex: number,
+  options: IDefineHubObjectParams<string, {}>
+): boolean {
   if (typeof shape !== 'object') return false
   if (shape === null) return false
 
@@ -367,7 +384,13 @@ function doObjectValidation(shape: unknown, value: unknown, methodName: string, 
   return true
 }
 
-function doOptionalValidation(shape: unknown, value: unknown, methodName: string, parameterIndex: number, options: IDefineHubObjectParams<string, {}>): boolean {
+function doOptionalValidation(
+  shape: unknown,
+  value: unknown,
+  methodName: string,
+  parameterIndex: number,
+  options: IDefineHubObjectParams<string, {}>
+): boolean {
   if (typeof shape !== 'object') return false
   if (shape === null) return false
 
@@ -379,7 +402,13 @@ function doOptionalValidation(shape: unknown, value: unknown, methodName: string
   return doValidation((shape as Optional<unknown>).value, value, methodName, parameterIndex, options)
 }
 
-function doArrayValidation(shape: unknown, value: unknown, methodName: string, parameterIndex: number, options: IDefineHubObjectParams<string, {}>): boolean {
+function doArrayValidation(
+  shape: unknown,
+  value: unknown,
+  methodName: string,
+  parameterIndex: number,
+  options: IDefineHubObjectParams<string, {}>
+): boolean {
   if (!Array.isArray(shape)) return false
   if (!Array.isArray(value)) return false
 
@@ -394,7 +423,13 @@ function doArrayValidation(shape: unknown, value: unknown, methodName: string, p
   return true
 }
 
-function doCustomTypeValidation(shape: unknown, _value: unknown, options: IDefineHubObjectParams<string, {}>, methodName: string, parameterIndex: number): boolean {
+function doCustomTypeValidation(
+  shape: unknown,
+  _value: unknown,
+  options: IDefineHubObjectParams<string, {}>,
+  methodName: string,
+  parameterIndex: number
+): boolean {
   if (typeof shape !== 'object') return false
   if (shape === null) return false
 
@@ -449,6 +484,7 @@ function prepareActions<
           resetIfNotConnected: true,
           startParameters: options.hubStartParameters
         })
+
         return await client.send(action, ...args)
       },
       async invoke(...args: unknown[]): Promise<any> {
@@ -462,6 +498,7 @@ function prepareActions<
           resetIfNotConnected: true,
           startParameters: options.hubStartParameters
         })
+
         return await client.invoke(action, ...args)
       },
     }
