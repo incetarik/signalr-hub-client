@@ -723,18 +723,17 @@ export class HubClient {
       this._connection.off(methodName, method!);
     }
 
-    if (this._methods) {
-      if (method) {
-        const methods = this._methods.get(methodName)
-        if (Array.isArray(methods)) {
-          const index = methods.indexOf(method)
-          methods.splice(index, 1)
-        }
-      }
-      else {
-        this._methods.delete(methodName)
-      }
+    if (!this._methods) return this
+    if (typeof method !== 'function') {
+      this._methods.delete(methodName)
+      return this
     }
+
+    const methods = this._methods.get(methodName)
+    if (!Array.isArray(methods)) return this
+
+    const index = methods.indexOf(method)
+    if (index >= 0) { methods.splice(index, 1) }
 
     return this;
   }
