@@ -83,7 +83,7 @@ export async function getHubClient(
   resetIfNotConnected = true,
 ) {
 
-  let logger: GetHubClientParams['logger']
+  let logger: GetHubClientParams[ 'logger' ]
   let cache = true
   let startParameters: IHubStartParameters | undefined
 
@@ -155,23 +155,21 @@ export async function getHubClient(
       return instance
     }
 
-    if (resetIfNotConnected) {
-      if (!instance.isConnected) {
-        try {
-          if (isDebug()) {
-            logger?.(`HubClient(${address}) was not connected, starting it again`)
-          }
-
-          await instance.start()
-
-          if (isDebug()) {
-            logger?.(`HubClient(${address}) is started`)
-          }
+    if (resetIfNotConnected && !instance.isConnected) {
+      try {
+        if (isDebug()) {
+          logger?.(`HubClient(${address}) was not connected, starting it again`)
         }
-        catch (error) {
-          instances.delete(address)
-          return getHubClient(address, start as boolean, resetIfNotConnected)
+
+        await instance.start()
+
+        if (isDebug()) {
+          logger?.(`HubClient(${address}) is started`)
         }
+      }
+      catch (error) {
+        instances.delete(address)
+        return getHubClient(address, start as boolean, resetIfNotConnected)
       }
     }
 
@@ -202,31 +200,23 @@ export async function getHubClient(
     instances.set(address, instance)
   }
 
-  if (!start) {
-    if (isDebug()) {
-      logger?.(`Unlocking the pending locks of HubClient(${address}) without starting it`)
-    }
-
-    lockInstance?.unlock(instance)
-    pendingInstances.delete(address)
-    return instance
-  }
-
-  if (typeof startParameters !== 'object') {
-    startParameters = {
-      autoConnect: true,
-      logLevel: LogLevel.Information,
-      connectionOptions: {
-        transport: HttpTransportType.WebSockets,
+  if (start) {
+    if (typeof startParameters !== 'object') {
+      startParameters = {
+        autoConnect: true,
+        logLevel: LogLevel.Information,
+        connectionOptions: {
+          transport: HttpTransportType.WebSockets,
+        }
       }
     }
-  }
 
-  if (isDebug()) {
-    logger?.(`Starting the instance of HubClient(${address})`)
-  }
+    if (isDebug()) {
+      logger?.(`Starting the instance of HubClient(${address})`)
+    }
 
-  await instance.start(startParameters)
+    await instance.start(startParameters)
+  }
 
   if (isDebug()) {
     logger?.(`Unlocking the pending locks of HubClient(${address})`)
@@ -249,7 +239,6 @@ export function deleteHubClientCache(address: string): boolean {
   instances.delete(address)
   return true
 }
-
 
 /**
  * Gets a cached instance of a {@link HubClient} by given address.
