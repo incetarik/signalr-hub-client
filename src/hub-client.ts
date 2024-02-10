@@ -13,6 +13,8 @@ import {
   Subject,
 } from '@microsoft/signalr'
 
+import { ILock, makeLock } from './utils/lock'
+
 /**
  * Represents the start parameters for a {@link HubClient}.
  *
@@ -101,6 +103,7 @@ export class HubClient {
   private _connectListeners!: ((connectionId: string, isReconnect: boolean) => void)[];
   private _connectionListeners!: ((prev: HubConnectionState, curr: HubConnectionState) => void)[];
   private _pendingMethods: Map<string, ((...args: unknown[]) => void)[]> | undefined
+  private _untilConnectedLock?: ILock<string>
 
   constructor(public readonly url: string) {}
 
@@ -245,18 +248,23 @@ export class HubClient {
    */
   untilConnected(): Promise<string> {
     if (this.isConnected) return Promise.resolve<string>(this.connectionId!);
+    if (this._untilConnectedLock) return this._untilConnectedLock.lock
 
-    return new Promise((res) => {
-      const that = this;
-      this.addConnectListener(function _untilConnectConnectListener(id) {
-        const index = that._connectListeners.indexOf(_untilConnectConnectListener);
-        if (~index) {
-          that._connectListeners.splice(index, 1);
-        }
+    const lock = makeLock<string>()
+    this._untilConnectedLock = lock
 
-        res(id);
-      });
-    });
+    const that = this;
+    this.addConnectListener(function _untilConnectConnectListener(id) {
+      const index = that._connectListeners.indexOf(_untilConnectConnectListener)
+      if (~index) {
+        that._connectListeners.splice(index, 1)
+      }
+
+      lock.unlock(id)
+      that._untilConnectedLock = undefined
+    })
+
+    return lock.lock
   }
 
   /**
