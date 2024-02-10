@@ -82,7 +82,6 @@ export type ConstrainedHubClient
     | 'baseUrl'
     | 'connectionId'
     | 'connectionState'
-    | 'state'
     | 'upstream'
     | 'upstreamWithTimeout'
   >

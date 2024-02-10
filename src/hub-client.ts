@@ -114,14 +114,6 @@ export class HubClient {
   }
 
   /**
-   * Gets the current state of the client.
-   * @returns {HubConnectionState}
-   */
-  get state(): HubConnectionState {
-    return this._connection?.state ?? HubConnectionState.Disconnected;
-  }
-
-  /**
    * Gets the base url of the client.
    * @returns {string}
    */
