@@ -100,7 +100,6 @@ export class HubClient {
   private _reconnectListeners!: ((error?: Error) => void)[];
   private _connectListeners!: ((connectionId: string, isReconnect: boolean) => void)[];
   private _connectionListeners!: ((prev: HubConnectionState, curr: HubConnectionState) => void)[];
-  private _methods!: Map<string, ((...args: unknown[]) => void)[]>
   private _pendingMethods: Map<string, ((...args: unknown[]) => void)[]> | undefined
 
   constructor(public readonly url: string) {}
@@ -682,22 +681,11 @@ export class HubClient {
       else {
         this._pendingMethods.set(methodName, [ newMethod ])
       }
-
-      return this;
-    }
-
-    if (!this._methods) {
-      this._methods = new Map();
-    }
-
-    if (this._methods.has(methodName)) {
-      this._methods.get(methodName)!.push(newMethod)
     }
     else {
-      this._methods.set(methodName, [ newMethod ])
+      this._connection.on(methodName, newMethod)
     }
 
-    this._connection.on(methodName, newMethod);
     return this;
   }
 
@@ -715,17 +703,22 @@ export class HubClient {
       this._connection.off(methodName, method!);
     }
 
-    if (!this._methods) return this
-    if (typeof method !== 'function') {
-      this._methods.delete(methodName)
-      return this
+    if (this._pendingMethods?.has(methodName)) {
+      if (typeof method === 'function') {
+        const pendingMethods = this._pendingMethods.get(methodName)!
+        const removeIdx = pendingMethods.indexOf(method)
+        if (removeIdx >= 0) {
+          pendingMethods.splice(removeIdx, 1)
+        }
+
+        if (pendingMethods.length === 0) {
+          this._pendingMethods.delete(methodName)
+        }
+      }
+      else {
+        this._pendingMethods.delete(methodName)
+      }
     }
-
-    const methods = this._methods.get(methodName)
-    if (!Array.isArray(methods)) return this
-
-    const index = methods.indexOf(method)
-    if (index >= 0) { methods.splice(index, 1) }
 
     return this;
   }
