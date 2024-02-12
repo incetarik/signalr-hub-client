@@ -1,6 +1,6 @@
 {
   "name": "signalr-hub-client",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "A small library containing a helper hub client definition with easy builder utilities.",
   "main": "dist/index.js",
   "scripts": {
