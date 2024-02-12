@@ -1,137 +1,28 @@
 import type {
-  Optional,
-  ParameterType,
-  ToFunctionParameters,
-} from './parameter-types'
-
-import type {
   ActionDefinitions,
   FunctionDefinitions,
   HubObjectDefinition,
+  IEventDefinitions,
   Unsubscriber,
 } from './types'
-
-import type { HubClient, IHubStartParameters } from '../hub-client'
+import type { HubClient } from '../hub-client'
+import type { IDefineHubObjectParams } from './define-hub-object-params.type'
+import type { ParameterType, ToFunctionParameters } from './parameter-types'
 
 import { HubConnectionState } from '@microsoft/signalr'
 
 import { getErrorLocation } from '../utils/get-error-location'
 import { isDebug } from '../utils/is-debug'
+import {
+  addHandlerDebugCache,
+  canUseHandlerDebugCache,
+  deleteHandlerDebugCache,
+  getHandlerDebugCache,
+} from './debug-functions'
+import { doParameterValidation } from './do-parameter-validation'
 import { getHubClient, GetHubClientParams } from './get-hub-client'
 
-type DependencyList = readonly unknown[]
-type EffectCallback = () => void | (() => void)
-type EffectModifierFunction = (fn: EffectCallback, dependencies: DependencyList) => void
-type CallbackModifierFunction = <F extends Function>(fn: F, dependencyList: DependencyList) => F
-const EffectHandlers = new WeakMap<HubClient, Map<string, (...args: unknown[]) => void>>()
-
-/**
- * Gets the cached handler for the given hub client and the event.
- *
- * @param {HubClient} client The hub client.
- * @param {string} eventName The event name.
- * @param {Function} handler The handler function.
- * @return A new cached handler function that can be used for `useListener` handlers.
- */
-function getCachedHandler(client: HubClient, eventName: string, handler: Function) {
-  let cachedHandlers = EffectHandlers.get(client)
-  if (!cachedHandlers) {
-    cachedHandlers = new Map()
-    EffectHandlers.set(client, cachedHandlers)
-  }
-
-  let cachedHandler = cachedHandlers.get(eventName)
-  if (!cachedHandler) {
-    cachedHandler = function _proxyHandlerFunction(...args: unknown[]) {
-      return handler.apply(client, args)
-    }
-
-    cachedHandlers.set(eventName, cachedHandler)
-  }
-
-  return cachedHandler
-}
-
-
-interface IDefineHubObjectParams<
-  Name extends string,
-  Events extends FunctionDefinitions,
-  Actions extends ActionDefinitions = {},
-> {
-  /**
-   * The name of the hub, this will be used for creating the address by
-   * appending the given name to `"/hubs/"` string.
-   */
-  readonly name: Name
-
-  /**
-   * The function definitions of the hub object.
-   */
-  readonly events: Events
-
-  /**
-   * The actions of the hub object.
-   */
-  readonly actions?: Actions,
-
-  /**
-   * The optional hub url string, if this is given, {@link name} will not be used
-   * for the url of the hub client.
-   */
-  readonly hubUrl?: string
-
-  /**
-   * Indicates if the parameters should be type-checked.
-   */
-  readonly typeCheckParameters?: boolean
-
-  /**
-   * Indicates if the parameters should be type-checked.
-   */
-  readonly typeCheckActions?: boolean
-
-  /**
-   * The underlying effect function.
-   *
-   * This can be `useEffect` function in `React` library for `hooks` / `useListener` implementations.
-   */
-  readonly effectModifier?: EffectModifierFunction
-
-  /**
-   * The underlying callback function modifier.
-   *
-   * This can be `useCallback` function in `React` library for `hooks` / `useListener` implementations.
-   */
-  readonly callbackModifier?: CallbackModifierFunction
-
-  /**
-   * A custom function for type-checking a custom type with its method name, parameter index and
-   * the value received from the server.
-   *
-   * @param {string} methodName The method name.
-   * @param {number} parameterIndex The parameter index.
-   * @param {*} value The received value.
-   * @return {boolean | string | undefined} A boolean indicating the type-matching status or a string
-   * of the error message or `undefined` for assuming the type is valid.
-   */
-  typeCheckCustomType?(methodName: keyof Events, parameterIndex: number, value: unknown): boolean | string | undefined
-
-  /**
-   * The start parameters for the hub, if needed.
-   *
-   * @type {IHubStartParameters}
-   * @memberof IDefineHubObjectParams
-   */
-  hubStartParameters?: IHubStartParameters
-
-  /**
-   * The logger function for hub client.
-   *
-   * @param {...unknown[]} args The arguments passed to the logger.
-   * @memberof IDefineHubObjectParams
-   */
-  logger?(...args: unknown[]): void
-}
+//#region defineHubObject
 
 /**
  * Defines a hub object with given options.
@@ -164,6 +55,7 @@ export function defineHubObject<
   const Actions extends ActionDefinitions = {}
 >(name: N, events: Events): HubObjectDefinition<N, Events, Actions>
 
+//#endregion
 
 export function defineHubObject<
   const N extends string,
@@ -196,8 +88,6 @@ export function defineHubObject<
   let registeredHookListenerCount = 0
   let registeredPermanentListenerCount = 0
 
-  const actions = prepareActions<N, Events, Actions>(options)
-
   function getClient(parameters: Omit<GetHubClientParams, 'address'>): Promise<HubClient> {
     const {
       cache = true,
@@ -222,7 +112,7 @@ export function defineHubObject<
 
   const result = {
     name: options.name,
-    actions,
+    actions: prepareActions<N, Events, Actions>(options),
 
     get hookListenerCount() { return registeredHookListenerCount },
     get permanentListenerCount() { return registeredPermanentListenerCount },
@@ -282,29 +172,46 @@ export function defineHubObject<
 
     useListener<K extends keyof Events>(
       event: K,
-      handler: (...args: ToFunctionParameters<Events[K]>) => void,
+      handler: (...args: ToFunctionParameters<Events[ K ]>) => void,
       deps: unknown[] = [],
     ) {
-      if (options.typeCheckParameters) {
-        handler = installTypeCheckingForHandler(
-          event as string,
-          handler,
-          events![ event ],
-          options
-        )
-      }
-
-      function __defaultEffectModifier(fn: Function, _deps: readonly unknown[]) { fn() }
-
       const {
-        callbackModifier = it => it,
+        acceptCleanup = true,
         effectModifier = __defaultEffectModifier,
+        callbackModifier = __defaultCallbackModifier,
       } = options
 
-      handler = callbackModifier(handler, deps)
       const pin = isDebug() ? new Error() : undefined
+      let userUnsubscriber: Unsubscriber | undefined
+
+      let willAcceptCleanup = true
+      if (typeof acceptCleanup === 'function') {
+        willAcceptCleanup = acceptCleanup(event as string, options.name)
+      }
+      else if (typeof acceptCleanup === 'boolean') {
+        willAcceptCleanup = acceptCleanup
+      }
+
+      if (willAcceptCleanup) {
+        const actualHandler = handler
+        handler = callbackModifier(function _proxyEventHandlerWithCleanup(...args) {
+          const result = actualHandler(...args)
+
+          if (typeof result === 'function') {
+            userUnsubscriber = result
+            return
+          }
+
+          return result
+        }, deps)
+      }
+      else {
+        handler = callbackModifier(handler, deps)
+      }
 
       effectModifier(function _subscribe() {
+        type HandlerFn = (...args: unknown[]) => void
+
         let isUnmounted = false
         let unsubscriber: (() => void) | undefined
 
@@ -315,22 +222,39 @@ export function defineHubObject<
           resetIfNotConnected: true,
           startParameters: options.hubStartParameters,
 
-          logger: options.logger
+          logger: options.logger,
         }).then(client => {
-          if (isUnmounted) return
+          if (isUnmounted) {
+            if (isDebug()) {
+              options.logger?.(`The event handler '${event as string}' was unmounted before the client is initialized`)
+            }
+
+            return
+          }
 
           const eventName = (event as string).toLowerCase() as string
-          const cachedHandler = getCachedHandler(client, eventName, handler)
-          client.on(eventName, cachedHandler)
+          client.on(eventName, handler as HandlerFn)
 
           if (isDebug()) {
             options.logger?.(`Added effect handler for '${eventName}' for '${options.name}'`)
           }
 
+          if (canUseHandlerDebugCache()) {
+            addHandlerDebugCache(client, eventName, handler)
+            options.logger?.(`Listener cache for HubClient(${url})`, getHandlerDebugCache(client))
+          }
+
           ++registeredHookListenerCount
 
           unsubscriber = () => {
-            client.off(eventName, cachedHandler)
+            userUnsubscriber?.unsubscribe()
+            client.off(eventName, handler as HandlerFn)
+
+            if (canUseHandlerDebugCache()) {
+              deleteHandlerDebugCache(client, eventName, handler)
+              options.logger?.(`Listener cache for HubClient(${url})`, getHandlerDebugCache(client))
+            }
+
             --registeredHookListenerCount
 
             if (isDebug()) {
@@ -343,18 +267,19 @@ export function defineHubObject<
 
           if (effectModifier === __defaultEffectModifier) {
             client.addConnectionChangeListener(function _connectionChangeListener(_prev, curr) {
-              client.removeConnectionListener(_connectionChangeListener)
-
               if (curr === HubConnectionState.Disconnected) {
+                options.logger?.(`The hub was disconnected, calling unsubscriber for '${eventName}' handler`)
                 unsubscriber!()
+                client.removeConnectionListener(_connectionChangeListener)
               }
               else if (curr === HubConnectionState.Connected) {
+                options.logger?.(`The hub is connected, calling subscribe effect for '${eventName}' handler`)
                 _subscribe()
+                client.removeConnectionListener(_connectionChangeListener)
               }
             })
           }
-        })
-        .catch(error => {
+        }).catch(error => {
           if (isUnmounted) return
           throw error
         })
@@ -363,23 +288,11 @@ export function defineHubObject<
           isUnmounted = true
           unsubscriber?.()
         }
-      }, [ event, handler, ...deps ])
+      }, [ event, handler ])
     },
   } as HubObjectDefinition<N, Events, Actions>
 
-  result.events = Object
-    .keys(options.events)
-    .reduce((prev, eventName) => {
-      prev[ eventName ] = {
-        addListener(handler) { return result.addListener(eventName.toLowerCase(), handler) },
-        useListener(handler, dependencyList = []) {
-          return result.useListener(eventName.toLowerCase(), handler, dependencyList)
-        },
-      } as typeof result.events[string]
-
-      return prev
-    }, {} as Record<string, unknown>) as typeof result.events
-
+  result.events = prepareEvents(options, result)
   return result
 }
 
@@ -395,139 +308,6 @@ function installTypeCheckingForHandler<F extends (...args: any[]) => unknown>(
   }
 
   return typeCheckedHandler as F
-}
-
-function doParameterValidation(
-  fnName: string,
-  parametersShape: readonly unknown[],
-  parametersReceived: unknown[],
-  options: IDefineHubObjectParams<string, {}>
-) {
-  for (let i = 0, limit = parametersShape.length; i < limit; ++i) {
-    const shape = parametersShape[ i ]
-    const parameter = parametersReceived[ i ]
-
-    if (doValidation(shape, parameter, fnName, i, options)) continue
-    throw new Error(`[doParameterValidation] - Type mismatch at parameter at index ${i} at ${fnName} function`)
-  }
-}
-
-function doValidation(
-  shape: unknown,
-  value: unknown,
-  methodName: string,
-  parameterIndex: number,
-  options: IDefineHubObjectParams<string, {}>
-): boolean {
-  if (doCustomTypeValidation(shape, value, options, methodName, parameterIndex)) return true
-  if (doOptionalValidation(shape, value, methodName, parameterIndex, options)) return true
-  if (doConstructorValidation(shape, value)) return true
-  if (doArrayValidation(shape, value, methodName, parameterIndex, options)) return true
-  if (doObjectValidation(shape, value, methodName, parameterIndex, options)) return true
-  return false
-}
-
-function doConstructorValidation(shape: unknown, value: unknown): boolean {
-  switch (typeof value) {
-    case 'number':
-      return shape === Number
-    case 'string':
-      return shape === String
-    case 'boolean':
-      return shape === Boolean
-    default:
-      return false
-  }
-}
-
-function doObjectValidation(
-  shape: unknown,
-  value: unknown,
-  methodName: string,
-  parameterIndex: number,
-  options: IDefineHubObjectParams<string, {}>
-): boolean {
-  if (typeof shape !== 'object') return false
-  if (shape === null) return false
-
-  if (typeof value !== 'object') return false
-  // The following case should be handled by `doOptionalValidation`, therefore
-  // we should never see the value as `null` here.
-  if (value === null) return false
-
-  const _shape = shape as Record<string, unknown>
-  const _value = value as Record<string, unknown>
-  for (const key in _shape) {
-    const subType = _shape[ key ]
-    if (doValidation(subType, _value[ key ], methodName, parameterIndex, options)) continue
-    return false
-  }
-
-  return true
-}
-
-function doOptionalValidation(
-  shape: unknown,
-  value: unknown,
-  methodName: string,
-  parameterIndex: number,
-  options: IDefineHubObjectParams<string, {}>
-): boolean {
-  if (typeof shape !== 'object') return false
-  if (shape === null) return false
-
-  const _shape = shape as Record<string, unknown>
-  const tag = _shape[ '_tag' ]
-  if (tag !== 'Optional') return false
-  if (typeof value === 'undefined' || value === null) return true
-
-  return doValidation((shape as Optional<unknown>).value, value, methodName, parameterIndex, options)
-}
-
-function doArrayValidation(
-  shape: unknown,
-  value: unknown,
-  methodName: string,
-  parameterIndex: number,
-  options: IDefineHubObjectParams<string, {}>
-): boolean {
-  if (!Array.isArray(shape)) return false
-  if (!Array.isArray(value)) return false
-
-  const [ subType ] = shape
-  if (!subType) return false
-
-  for (const item of value) {
-    if (doValidation(subType, item, methodName, parameterIndex, options)) continue
-    return false
-  }
-
-  return true
-}
-
-function doCustomTypeValidation(
-  shape: unknown,
-  _value: unknown,
-  options: IDefineHubObjectParams<string, {}>,
-  methodName: string,
-  parameterIndex: number
-): boolean {
-  if (typeof shape !== 'object') return false
-  if (shape === null) return false
-
-  const _shape = shape as Record<string, unknown>
-  const tag = _shape[ '_tag' ]
-  if (tag !== 'CustomType') return false
-
-  if (typeof options.typeCheckCustomType !== 'function') return true
-  const result = options.typeCheckCustomType(methodName as never, parameterIndex, _value)
-  if (typeof result === 'boolean') return result
-  if (typeof result === 'string') {
-    if (!result.trim()) return true
-    throw new Error(result)
-  }
-
-  return true
 }
 
 function prepareActions<
@@ -588,3 +368,30 @@ function prepareActions<
 
   return actions
 }
+
+function prepareEvents<
+  const N extends string,
+  const Events extends FunctionDefinitions,
+  const Actions extends ActionDefinitions
+>(options: IDefineHubObjectParams<N, Events, Actions>, definition: HubObjectDefinition<N, Events, Actions>): IEventDefinitions<Events> {
+  return Object
+    .keys(options.events)
+    .reduce((prev, eventName) => {
+      prev[ eventName ] = {
+        addListener(handler) {
+          return definition.addListener(eventName.toLowerCase(), handler)
+        },
+        useListener(handler, dependencyList = []) {
+          return definition.useListener(eventName.toLowerCase(), handler, dependencyList)
+        },
+      }
+
+      return prev
+    }, {} as Record<string, Partial<IEventDefinitions<Events>[keyof Events]>>) as IEventDefinitions<Events>
+}
+
+//@ts-ignore
+function __defaultEffectModifier(fn: Function, _deps: readonly unknown[]) { fn() }
+
+//@ts-ignore
+function __defaultCallbackModifier<F>(f: F): F { return f }
