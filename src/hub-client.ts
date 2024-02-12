@@ -677,7 +677,7 @@ export class HubClient {
    * @param {Function} newMethod The handler that will be raised when the hub method is invoked.
    * @returns {this} The instance itself to allow chaining.
    */
-  on(methodName: string, newMethod: (...args: any[]) => void): HubClient {
+  on(methodName: string, newMethod: (...args: unknown[]) => void): HubClient {
     if (typeof this._connection === 'undefined') {
       if (!this._pendingMethods) {
         this._pendingMethods = new Map()
