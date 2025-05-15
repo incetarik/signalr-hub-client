@@ -132,7 +132,7 @@ export function defineHubObject<
       }
 
       const unsubscriber: Unsubscriber  = {
-        unsubscribe(){
+        unsubscribe() {
           return false
         }
       }
