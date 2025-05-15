@@ -131,7 +131,11 @@ export function defineHubObject<
         )
       }
 
-      let unsubscribe = () => false
+      const unsubscriber: Unsubscriber  = {
+        unsubscribe(){
+          return false
+        }
+      }
 
       getClient({
         start: true,
@@ -156,7 +160,7 @@ export function defineHubObject<
 
         ++registeredPermanentListenerCount
 
-        unsubscribe = () => {
+        unsubscriber.unsubscribe = () => {
           client.off(eventName, _proxyHandlerFunction)
           --registeredPermanentListenerCount
 
@@ -167,7 +171,7 @@ export function defineHubObject<
         }
       })
 
-      return { unsubscribe }
+      return unsubscriber
     },
 
     useListener<K extends keyof Events>(
