@@ -3,6 +3,12 @@ This file contains the changes made to the package.
 
 The sections are in descending order of the change date.
 
+## [2.0.1] - 2025-05-15
+### Fixed
+- `Unsubscriber` returned from `addListener` might be wrong and be default value returning `false` instead of actually unsubscribing the event.
+The issue is [fixed](https://github.com/incetarik/signalr-hub-client/pull/1) thanks to @sahinkutlu.
+
+
 ## [2.0.0] - 2024-02-12
 ### Fixed
 - `HubClient.off` method may use `.splice` method when a function is passed
@@ -30,6 +36,7 @@ underlying handler directly.
 ## [1.0.0] - 2024-01-28
 The initial version of the package.
 
-[Unreleased]: https://github.com/incetarik/signalr-hub-client/compare/2.0.0...HEAD
+[Unreleased]: https://github.com/incetarik/signalr-hub-client/compare/2.0.1...HEAD
+[2.0.1]: https://github.com/incetarik/signalr-hub-client/compare/2.0.1...2.0.0
 [2.0.0]: https://github.com/incetarik/signalr-hub-client/compare/2.0.0...1.0.0
 [1.0.0]: https://github.com/incetarik/signalr-hub-client/releases/tag/1.0.0
